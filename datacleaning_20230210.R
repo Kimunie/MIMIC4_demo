@@ -102,7 +102,7 @@ vars = c("Sodium", "Potassium", "Creatinine", "Hematocrit", "White Blood Cells",
          "Urea Nitrogen", "Bicarbonate", "Bilirubin, Total", "Platelet Count")
 
 
-# 仲子先生が選んだ変数
+# N先生が選んだ変数
 # vars = c("Sodium", "Potassium", "Chloride", "Calcium", "Phosphate", "Magnesium", 
 #          "AST", "ALT", "Alkaline Phosphatase", "Gamma Glu", "Bilirubin", "Urea", 
 #          "Creatinine", "Albumin", "Protein, Total", "Glucose", "Creatine Kinase ", 
