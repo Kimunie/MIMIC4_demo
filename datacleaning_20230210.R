@@ -3,7 +3,7 @@
 #################################################
 #' MIMIC-IV demodata cleaning
 #' 
-#'  Editor: S.Kimura
+#'  Editor: S.K
 #'  Date: 2023/02/10-
 #' 
 #' 3. Time-to-event Prediction
@@ -19,7 +19,6 @@ library(tidyverse)
 library(rms)
 library(zoo)
 library(lubridate)
-
 
 # Read all .csv files ------------------------------------------------------------
 
@@ -241,6 +240,10 @@ hosp_icu_merged_24h = hosp_icu_merged %>%
 
 describe(hosp_icu_merged_24h)
 
+hosp_icu_merged_24h %>%
+  group_by(readm_28d) %>%
+  distinct(subject_id) %>% 
+  count()
 
 
 # test --------------------------------------------------------------------
