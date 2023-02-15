@@ -66,6 +66,7 @@ hosp_adm_pat = hosp_adm_pat %>%
   mutate(num_admission = row_number(), .after = hadm_id) %>%
   ungroup() 
 
+# outcome: readmission within 28days
 df_second_adm = hosp_adm_pat %>% 
   filter(num_admission == 2) %>% 
   select(subject_id, admittime) %>% 
@@ -239,6 +240,7 @@ hosp_icu_merged_24h = hosp_icu_merged %>%
          storetime_h < outtime)
 
 describe(hosp_icu_merged_24h)
+
 
 
 # test --------------------------------------------------------------------
