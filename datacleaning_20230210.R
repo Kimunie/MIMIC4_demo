@@ -48,53 +48,65 @@ icu_icustays = data_icu[[5]]
 
 # inclusion criteria ------------------------------------------------------
 
-## merge adm + pat
-hosp_adm_pat = full_join(hosp_adm, hosp_pat, by="subject_id")
-
-hosp_adm_pat = hosp_adm_pat %>% 
-  ## admission duration >= 24
-  mutate(duration = difftime(dischtime, admittime,units = "hours"), .after = dischtime) %>% 
-  filter(duration >= 24) %>% 
+hosp_adm_pat_icustays = hosp_adm %>% 
+  full_join(hosp_pat, by="subject_id") %>% 
+  full_join(icu_icustays, by=c("subject_id", "hadm_id")) %>% 
+  
   ## 18 < anchor_age < 90
   filter(anchor_age > 18, anchor_age < 90) %>% 
+  
+  ## icu admission duration >= 24hours
+  filter(difftime(outtime, intime,units = "hours") >= 24) %>% 
+  
   ## not died in hospital
   filter(hospital_expire_flag == 0) %>% 
+  select(-deathtime) %>% 
+  
   ## number of admission
-  group_by(subject_id) %>%
-  arrange(admittime) %>%
-  mutate(num_admission = row_number(), .after = hadm_id) %>%
-  ungroup() 
-
-# outcome: readmission within 28days
-df_second_adm = hosp_adm_pat %>% 
-  filter(num_admission == 2) %>% 
-  select(subject_id, admittime) %>% 
-  rename(secondadm = admittime)
-
-hosp_adm_pat = hosp_adm_pat %>%
-  filter(num_admission == 1) %>%
-  left_join(df_second_adm, by = "subject_id") %>% 
-  mutate(readm_28d = !is.na(secondadm) & as.Date(secondadm) - as.Date(dischtime) <= 28,
-         readm_28d = as.integer(readm_28d))
-
-icu_icu1stadm = icu_icustays %>% 
-  select(subject_id, hadm_id, stay_id, intime, outtime) %>% 
+  group_by(subject_id) %>% 
+  arrange(admittime) %>% 
+  mutate(num_adm = row_number(), .after = hadm_id) %>%
+  ungroup() %>% 
+  
   ## number of icu admission
   group_by(subject_id) %>% 
   arrange(intime) %>% 
   mutate(num_icuadm = row_number(), .after = stay_id) %>% 
-  ungroup() %>% 
-  filter(num_icuadm == 1)
+  ungroup()
 
-hosp_icu1stadm_pat = hosp_adm_pat %>% 
-  inner_join(icu_icu1stadm, by=c("subject_id", "hadm_id"))
+# get second admission date
+df_second_adm = hosp_adm_pat_icustays %>% 
+  filter(num_adm == 2) %>% 
+  select(subject_id, admittime) %>% 
+  rename(secondadm = admittime)
 
-#View(hosp_icu1stadm_pat %>% filter(!((outtime <= dischtime) & (outtime >= admittime))))
+# outcome: readmission within 28days 
+hosp_adm_pat_icustays_1st = hosp_adm_pat_icustays %>%
+  filter(num_icuadm == 1) %>%
+  left_join(df_second_adm, by = "subject_id") %>% 
+  mutate(readm_28d = as.integer(!is.na(secondadm) & difftime(secondadm, outtime, units = "days") <= 28))
 
 # subject_id of included patients
-subject_id_included = (hosp_icu1stadm_pat %>% distinct(subject_id, .keep_all = TRUE))$subject_id
-length(subject_id_included) # N = 70
+subject_id_included = (hosp_adm_pat_icustays %>% distinct(subject_id, .keep_all = TRUE))$subject_id
+length(subject_id_included)
 
+describe(hosp_adm_pat_icustays)
+
+View(
+hosp_adm_pat_icustays %>%
+  filter(num_icuadm == 2) %>%
+  left_join(df_second_adm, by = "subject_id") %>% 
+  mutate(readm_28d = as.integer(!is.na(secondadm) & difftime(secondadm, outtime, units = "days") <= 28))
+)
+
+View(
+hosp_icu1stadm_pat %>% 
+  mutate(diff = ceiling(difftime(dischtime, outtime,units = "days"))) %>%
+  group_by(diff) %>%
+  count %>%
+  ungroup() %>%
+  mutate(cum = cumsum(`n`))
+)
 
 # extract variables from labevents ----------------------------------------
 
@@ -120,11 +132,6 @@ for(i in 1:length(vars)){
   labitems_sub = rbind(labitems_sub, tmp)
 }
 
-1:length(vars) %>% map(function(i){
-  rbind(labitems_sub, 
-        labitems %>% filter(fluid == "Blood", category != "Blood Gas") %>% 
-          filter(str_detect(label, vars[i])))  
-})
 
 # for(i in 1:length(betu)){
 #   tmp = labitems %>% filter(fluid == "Blood", category != "Blood Gas") %>% 
@@ -157,7 +164,7 @@ hosp_lab_sub_wide =
               names_from = label,
               values_from = value,
               values_fn = ~ median(.x, na.rm = TRUE)) %>% 
-  inner_join(icu_icu1stadm[, "hadm_id"], by="hadm_id") %>% 
+  inner_join(hosp_adm_pat_icustays_1st[, "hadm_id"], by="hadm_id") %>% 
   group_by(subject_id, hadm_id) %>% 
   arrange(storetime_h) %>% 
   ungroup() %>% 
@@ -189,7 +196,7 @@ icu_chart_sub_wide =
               names_from = label,
               values_from = valuenum,
               values_fn = ~ median(.x, na.rm = TRUE)) %>%
-  inner_join(icu_icu1stadm[, "stay_id"], by="stay_id") %>% 
+  inner_join(hosp_adm_pat_icustays_1st[, "stay_id"], by="stay_id") %>% 
   group_by(subject_id, hadm_id) %>% 
   arrange(storetime_h) %>% 
   ungroup() %>% 
@@ -214,11 +221,11 @@ icu_chart_sub_wide = icu_chart_sub_wide %>% select(-`Temperature Celsius`)
 lab_vital = full_join(icu_chart_sub_wide, hosp_lab_sub_wide, 
                       by = c("subject_id", "hadm_id", "storetime_h"))
 
-hosp_icu_merged = left_join(hosp_icu1stadm_pat, lab_vital,
+hosp_icu_merged = left_join(hosp_adm_pat_icustays_1st, lab_vital,
                             by=c("subject_id", "hadm_id", "stay_id"))
 
 
-describe(hosp_icu1stadm_pat$subject_id)
+describe(hosp_adm_pat_icustays_1st$subject_id)
 describe(lab_vital$subject_id)
 
 describe(hosp_icu_merged$subject_id)
